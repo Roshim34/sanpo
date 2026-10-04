@@ -111,6 +111,7 @@
   .steps li { margin-bottom: 18px; }
   .steps h3 { margin: 0; font-size: 16px; }
   .steps p { margin: 2px 0 10px; color: var(--muted); font-size: 14px; }
+  .steps .or { margin-top: 14px; }
   .steps .done { color: var(--ai); font-weight: 500; margin-top: 8px; }
 
   .row { display: flex; gap: 8px; }
@@ -173,6 +174,12 @@
         <h3>自宅の位置を登録する</h3>
         <p>家にいるときに押してください。位置はこのiPhoneの中にだけ保存されます。</p>
         <button id="setupHome" class="btn ghost">今いる場所を自宅にする</button>
+        <p class="or">または、緯度・経度を入力して登録します。Googleマップで自宅を長押しすると出る数字を、どちらかの欄に貼り付けると自動で2つに分かれます。</p>
+        <div class="row">
+          <input id="setupLat" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="緯度 35.685175" aria-label="緯度">
+          <input id="setupLng" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="経度 139.752800" aria-label="経度">
+        </div>
+        <button id="setupHomeSave" class="btn ghost" style="margin-top:10px">この位置を自宅にする</button>
         <p class="done" id="homeDone" hidden></p>
         <p id="setupHomeMsg" class="save-msg" role="status" aria-live="polite"></p>
       </li>
@@ -559,7 +566,6 @@
     $('#setup').hidden = !need;
     $('#make').disabled = need;
     $('#keyDone').hidden = !S.orsKey;
-    if (hasHome()) { $('#homeDone').hidden = false; $('#homeDone').textContent = '登録しました'; }
     $('#sSteps').value = S.targetSteps;
     $('#sStride').value = S.strideCm;
     $('#sWps').value = S.waypoints;
@@ -763,7 +769,7 @@
     }
     refreshSetup();
     const t = new Date();
-    saveMessage(`${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} に保存しました。目標は約${(targetMeters() / 1000).toFixed(1)}kmです。`);
+    saveMessage(`${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} に保存しました。`);
     btn.textContent = '保存しました ✓';
     btn.classList.add('saved');
     clearTimeout(savedTimer);
@@ -775,11 +781,23 @@
       saveMessage('変更があります。「設定を保存」を押すと反映されます。');
     }
   });
-  ['#sLat', '#sLng'].forEach(id => $(id).addEventListener('paste', (e) => {
-    const t = (e.clipboardData || window.clipboardData).getData('text');
-    const m = t.match(/(-?\d+(?:\.\d+)?)\s*[,、，\s]\s*(-?\d+(?:\.\d+)?)/);
-    if (m) { e.preventDefault(); $('#sLat').value = m[1]; $('#sLng').value = m[2]; }
-  }));
+  [['#sLat', '#sLng'], ['#setupLat', '#setupLng']].forEach(([latId, lngId]) => {
+    [latId, lngId].forEach(id => $(id).addEventListener('paste', (e) => {
+      const t = (e.clipboardData || window.clipboardData).getData('text');
+      const m = t.match(/(-?\d+(?:\.\d+)?)\s*[,、，\s]\s*(-?\d+(?:\.\d+)?)/);
+      if (m) { e.preventDefault(); $(latId).value = m[1]; $(lngId).value = m[2]; }
+    }));
+  });
+  $('#setupHomeSave').addEventListener('click', () => {
+    const lat = parseFloat($('#setupLat').value), lng = parseFloat($('#setupLng').value);
+    if (!(lat >= 20 && lat <= 50 && lng >= 120 && lng <= 155)) {
+      showMsg($('#setupHomeMsg'), '緯度・経度を確認してください(例: 35.685175, 139.752800)。', true);
+      return;
+    }
+    S.homeLat = lat; S.homeLng = lng;
+    saveSettings(); refreshSetup(); drawHome();
+    showMsg($('#setupHomeMsg'), '自宅を登録しました。');
+  });
   $('#sDiag').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     if (!S.orsKey || !hasHome()) { $('#diag').textContent = 'APIキーと自宅の位置を先に設定してください。'; return; }
