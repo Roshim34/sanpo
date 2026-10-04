@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="歩">
+<meta name="apple-mobile-web-app-title" content="さんぽ">
 <title>散歩ルート生成</title>
 <!--
   セキュリティ設定
@@ -138,6 +138,11 @@
     background: var(--pear); border: 3px solid #fff; border-radius: 50%; width: 22px; height: 22px;
     box-shadow: 0 1px 4px rgba(0,0,0,.4);
   }
+  .btn { transition: transform 0.08s, background-color 0.2s, color 0.2s; }
+  .btn:active { transform: scale(0.97); }
+  .btn.saved, .btn.saved:active { background: var(--pear); color: #1F2A2E; }
+  .save-msg { min-height: 1.6em; margin: 8px 2px 0; font-size: 14px; font-weight: 500; color: var(--ai); white-space: pre-line; }
+  .save-msg.error { color: var(--signal); }
   .secret { -webkit-text-security: disc; }
   .secret.show { -webkit-text-security: none; }
   [hidden] { display: none !important; }
@@ -201,6 +206,7 @@
     <div class="field">
       <label for="sStride">歩幅(cm)</label>
       <input id="sStride" type="number" inputmode="numeric" min="40" max="120">
+      <p class="hint">目安は身長150cmで約68cm、160cmで約72cm、170cmで約77cm、180cmで約81cmです(身長×0.45)</p>
       <p class="hint">iPhoneの「ヘルスケア」で、ある日の「歩行+走行の距離」を「歩数」で割ると実際の歩幅がわかります。数回歩いて合わせ込むと1万歩の精度が上がります。</p>
     </div>
 
@@ -235,6 +241,7 @@
     </div>
 
     <button id="sSave" class="btn primary">設定を保存</button>
+    <p id="saveMsg" class="save-msg" role="status" aria-live="polite"></p>
     <button id="sClear" class="btn ghost">コースの履歴を消す</button>
     <button id="sDiag" class="btn ghost">通信テストをする</button>
     <p id="diag" class="status"></p>
@@ -704,21 +711,59 @@
   });
   $('#setupHome').addEventListener('click', (e) => registerHome(e.currentTarget));
   $('#sHomeGps').addEventListener('click', (e) => registerHome(e.currentTarget));
+  let savedTimer;
+  function saveMessage(msg, isError) {
+    const el = $('#saveMsg');
+    el.textContent = msg;
+    el.classList.toggle('error', !!isError);
+  }
   $('#sSave').addEventListener('click', () => {
+    const btn = $('#sSave');
     const steps = parseInt($('#sSteps').value, 10);
     const stride = parseFloat($('#sStride').value);
     const wps = parseInt($('#sWps').value, 10);
-    if (steps >= 1000) S.targetSteps = steps;
-    if (stride >= 40 && stride <= 120) S.strideCm = stride;
-    if (wps >= 3 && wps <= 9) S.waypoints = wps;
+    const latStr = $('#sLat').value.trim(), lngStr = $('#sLng').value.trim();
+    const lat = parseFloat(latStr), lng = parseFloat(lngStr);
+
+    // 入力のまちがいを、どこが悪いかわかる形でまとめて伝える
+    const errors = [];
+    if (!(steps >= 1000)) errors.push('目標歩数は1000以上の数字にしてください。');
+    if (!(stride >= 40 && stride <= 120)) errors.push('歩幅は40〜120の数字にしてください。');
+    if (!(wps >= 3 && wps <= 9)) errors.push('経由地の数は3〜9にしてください。');
+    const homeOk = lat >= 20 && lat <= 50 && lng >= 120 && lng <= 155;
+    if ((latStr || lngStr) && !homeOk) errors.push('自宅の緯度・経度を確認してください(例: 35.685175, 139.752800)。');
+    if (errors.length) { saveMessage('保存できませんでした。\n' + errors.join('\n'), true); return; }
+
+    S.targetSteps = steps; S.strideCm = stride; S.waypoints = wps;
     S.avoidSteps = $('#sSteps2').checked;
     S.avoidCrossings = $('#sCross').checked;
     S.orsKey = $('#sKey').value.trim();
-    const lat = parseFloat($('#sLat').value), lng = parseFloat($('#sLng').value);
-    if (lat >= 20 && lat <= 50 && lng >= 120 && lng <= 155) { S.homeLat = lat; S.homeLng = lng; drawHome(); }
-    else if ($('#sLat').value || $('#sLng').value) { setStatus('緯度・経度の数字を確認してください(例: 35.685175, 139.752800)。', true); return; }
-    saveSettings(); refreshSetup();
-    setStatus(`保存しました。目標は約${(targetMeters() / 1000).toFixed(1)}kmです。`);
+    if (homeOk) { S.homeLat = lat; S.homeLng = lng; drawHome(); }
+
+    // 保存したあとに読み直して、本当に保存されたか確かめる
+    saveSettings();
+    const back = read(KEY_SETTINGS, null);
+    const ok = back && back.targetSteps === S.targetSteps && back.strideCm === S.strideCm &&
+               back.waypoints === S.waypoints && back.orsKey === S.orsKey &&
+               back.homeLat === S.homeLat && back.homeLng === S.homeLng &&
+               back.avoidSteps === S.avoidSteps && back.avoidCrossings === S.avoidCrossings;
+    if (!ok) {
+      saveMessage('保存できませんでした。Safariのプライベートブラウズでは保存できないので、通常の画面かホーム画面のアイコンから開いてください。', true);
+      return;
+    }
+    refreshSetup();
+    const t = new Date();
+    saveMessage(`${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} に保存しました。目標は約${(targetMeters() / 1000).toFixed(1)}kmです。`);
+    btn.textContent = '保存しました ✓';
+    btn.classList.add('saved');
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => { btn.textContent = '設定を保存'; btn.classList.remove('saved'); }, 2000);
+  });
+  // 保存後に入力を変えたら、まだ保存していないことを知らせる
+  document.querySelector('.settings').addEventListener('input', (e) => {
+    if (e.target.matches('#sSteps, #sStride, #sWps, #sLat, #sLng, #sKey, #sSteps2, #sCross')) {
+      saveMessage('変更があります。「設定を保存」を押すと反映されます。');
+    }
   });
   ['#sLat', '#sLng'].forEach(id => $(id).addEventListener('paste', (e) => {
     const t = (e.clipboardData || window.clipboardData).getData('text');
