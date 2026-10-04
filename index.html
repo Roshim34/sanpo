@@ -7,11 +7,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="さんぽ">
 <title>今日のさんぽ</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!--
+  セキュリティ設定
+  ・CSP:このページが読み込める部品と、通信してよい相手を限定する。
+    万一部品が改ざんされても、ここに書かれていない宛先へはデータを送れない。
+  ・SRI(integrity):Leafletが公式に公開されている中身と一致しない場合は読み込まない。
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://tile.openstreetmap.org https://cdn.jsdelivr.net; connect-src https://api.heigit.org https://api.openrouteservice.org https://overpass-api.de https://overpass.kumi.systems; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
 <style>
   :root {
     --paper: #F1F4EA;      /* 梨の果肉のような淡い白緑 */
@@ -46,7 +51,7 @@
   body {
     background: var(--paper);
     color: var(--ink);
-    font-family: "Zen Kaku Gothic New", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
     font-size: 16px;
     line-height: 1.7;
     -webkit-text-size-adjust: 100%;
@@ -133,6 +138,8 @@
     background: var(--pear); border: 3px solid #fff; border-radius: 50%; width: 22px; height: 22px;
     box-shadow: 0 1px 4px rgba(0,0,0,.4);
   }
+  .secret { -webkit-text-security: disc; }
+  .secret.show { -webkit-text-security: none; }
   [hidden] { display: none !important; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
@@ -140,7 +147,7 @@
 <body>
 <main class="wrap">
   <header class="top">
-    <h1>散歩ルート生成</h1>
+    <h1>今日のさんぽ</h1>
     <p class="date" id="date"></p>
   </header>
 
@@ -151,7 +158,7 @@
         <h3>経路検索のAPIキーを入れる</h3>
         <p>openrouteservice.org で無料登録して取得したキーを貼り付けます。</p>
         <div class="row">
-          <input id="setupKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="APIキー" aria-label="APIキー">
+          <input id="setupKey" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="APIキー" aria-label="APIキー">
           <button id="setupKeySave" class="btn ghost">保存</button>
         </div>
         <p class="done" id="keyDone" hidden>保存しました</p>
@@ -221,7 +228,10 @@
 
     <div class="field">
       <label for="sKey">openrouteservice のAPIキー</label>
-      <input id="sKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="row">
+        <input id="sKey" class="secret" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="sKeyShow" class="btn ghost" type="button" aria-pressed="false">表示</button>
+      </div>
     </div>
 
     <button id="sSave" class="btn primary">設定を保存</button>
@@ -722,6 +732,15 @@
     const lines = await diagnose();
     $('#diag').textContent = lines.join('\n');
     btn.disabled = false;
+  });
+  $('#sKeyShow').addEventListener('click', (e) => {
+    const on = $('#sKey').classList.toggle('show');
+    e.currentTarget.textContent = on ? '隠す' : '表示';
+    e.currentTarget.setAttribute('aria-pressed', on);
+  });
+  document.querySelector('.settings').addEventListener('toggle', () => {
+    // 設定を閉じたら、キーは必ず伏せ字に戻す
+    $('#sKey').classList.remove('show'); $('#sKeyShow').textContent = '表示'; $('#sKeyShow').setAttribute('aria-pressed', false);
   });
   $('#sClear').addEventListener('click', () => {
     write(KEY_HISTORY, []); write(KEY_LAST, null);
