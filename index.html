@@ -167,12 +167,14 @@
           <button id="setupKeySave" class="btn ghost">保存</button>
         </div>
         <p class="done" id="keyDone" hidden>保存しました</p>
+        <p id="setupKeyMsg" class="save-msg" role="status" aria-live="polite"></p>
       </li>
       <li>
         <h3>自宅の位置を登録する</h3>
         <p>家にいるときに押してください。位置はこのiPhoneの中にだけ保存されます。</p>
         <button id="setupHome" class="btn ghost">今いる場所を自宅にする</button>
         <p class="done" id="homeDone" hidden></p>
+        <p id="setupHomeMsg" class="save-msg" role="status" aria-live="polite"></p>
       </li>
     </ol>
   </section>
@@ -206,7 +208,7 @@
     <div class="field">
       <label for="sStride">歩幅(cm)</label>
       <input id="sStride" type="number" inputmode="numeric" min="40" max="120">
-      <p class="hint">目安は身長150cmで約68cm、160cmで約72cm、170cmで約77cm、180cmで約81cmです(身長×0.45)</p>
+      <p class="hint">目安は身長150cmで約68cm、160cmで約72cm、170cmで約77cm、180cmで約81cmです(身長×0.45)。脚の筋肉が多い人や早歩きの人は、これより少し大きくなります。</p>
       <p class="hint">iPhoneの「ヘルスケア」で、ある日の「歩行+走行の距離」を「歩数」で割ると実際の歩幅がわかります。数回歩いて合わせ込むと1万歩の精度が上がります。</p>
     </div>
 
@@ -230,6 +232,7 @@
       </div>
       <p class="hint">Googleマップで自宅を長押しすると出る「35.685175, 139.752800」のような数字をコピーして、どちらかの欄に貼り付けると自動で2つに分かれます。</p>
       <button id="sHomeGps" class="btn ghost">今いる場所を自宅にする</button>
+      <p id="homeMsg" class="save-msg" role="status" aria-live="polite"></p>
     </div>
 
     <div class="field">
@@ -242,7 +245,11 @@
 
     <button id="sSave" class="btn primary">設定を保存</button>
     <p id="saveMsg" class="save-msg" role="status" aria-live="polite"></p>
-    <button id="sClear" class="btn ghost">コースの履歴を消す</button>
+    <div class="field">
+      <button id="sClear" class="btn ghost">コースの履歴を消す</button>
+      <p class="hint">似たコースが続かないように、直近3回のコースを覚えています。消すと、次は過去のコースを気にせずに選びます。今日作ったコースも、次に開いたときには表示されなくなります。APIキーや自宅などの設定は消えません。</p>
+      <p id="clearMsg" class="save-msg" role="status" aria-live="polite"></p>
+    </div>
     <button id="sDiag" class="btn ghost">通信テストをする</button>
     <p id="diag" class="status"></p>
   </details>
@@ -684,19 +691,26 @@
     }
   }
 
+  function showMsg(el, msg, isError) {
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('error', !!isError);
+  }
+
   // ---------- 自宅の登録 ----------
-  function registerHome(btn) {
-    if (!navigator.geolocation) { setStatus('このブラウザでは位置情報が使えません。設定で緯度・経度を入力してください。', true); return; }
+  function registerHome(btn, msgEl) {
+    const say = (m, err) => showMsg(msgEl, m, err);
+    if (!navigator.geolocation) { say('このブラウザでは位置情報が使えません。設定で緯度・経度を入力してください。', true); return; }
     const label = btn.textContent;
-    btn.disabled = true; btn.textContent = '位置を取得しています';
+    btn.disabled = true; btn.textContent = '位置を取得しています'; say('');
     navigator.geolocation.getCurrentPosition(pos => {
       S.homeLat = pos.coords.latitude; S.homeLng = pos.coords.longitude;
       saveSettings(); refreshSetup(); drawHome();
       const acc = Math.round(pos.coords.accuracy);
-      setStatus(acc > 100 ? `登録しました。ただ誤差が約${acc}mと大きいので、窓際や外でもう一度押すと確実です。` : `自宅を登録しました(誤差 約${acc}m)。`, acc > 100);
+      say(acc > 100 ? `登録しました。ただ誤差が約${acc}mと大きいので、窓際や外でもう一度押すと確実です。` : `自宅を登録しました(誤差 約${acc}m)。`, acc > 100);
       btn.disabled = false; btn.textContent = label;
     }, err => {
-      setStatus(err.code === 1 ? '位置情報の利用が許可されていません。iPhoneの設定 → プライバシー → 位置情報サービスで、Safariを「使用中のみ」にしてください。' : '位置を取得できませんでした。もう一度押してください。', true);
+      say(err.code === 1 ? '位置情報の利用が許可されていません。iPhoneの設定 → プライバシー → 位置情報サービスで、Safariを「使用中のみ」にしてください。' : '位置を取得できませんでした。もう一度押してください。', true);
       btn.disabled = false; btn.textContent = label;
     }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
   }
@@ -706,17 +720,13 @@
   $('#again').addEventListener('click', makeCourse);
   $('#setupKeySave').addEventListener('click', () => {
     const v = $('#setupKey').value.trim();
-    if (!v) { setStatus('APIキーを貼り付けてから保存してください。', true); return; }
-    S.orsKey = v; saveSettings(); refreshSetup(); setStatus('');
+    if (!v) { showMsg($('#setupKeyMsg'), 'APIキーを貼り付けてから保存してください。', true); return; }
+    S.orsKey = v; saveSettings(); refreshSetup(); showMsg($('#setupKeyMsg'), '');
   });
-  $('#setupHome').addEventListener('click', (e) => registerHome(e.currentTarget));
-  $('#sHomeGps').addEventListener('click', (e) => registerHome(e.currentTarget));
+  $('#setupHome').addEventListener('click', (e) => registerHome(e.currentTarget, $('#setupHomeMsg')));
+  $('#sHomeGps').addEventListener('click', (e) => registerHome(e.currentTarget, $('#homeMsg')));
   let savedTimer;
-  function saveMessage(msg, isError) {
-    const el = $('#saveMsg');
-    el.textContent = msg;
-    el.classList.toggle('error', !!isError);
-  }
+  function saveMessage(msg, isError) { showMsg($('#saveMsg'), msg, isError); }
   $('#sSave').addEventListener('click', () => {
     const btn = $('#sSave');
     const steps = parseInt($('#sSteps').value, 10);
@@ -789,7 +799,8 @@
   });
   $('#sClear').addEventListener('click', () => {
     write(KEY_HISTORY, []); write(KEY_LAST, null);
-    setStatus('コースの履歴を消しました。');
+    const t = new Date();
+    showMsg($('#clearMsg'), `${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')} にコースの履歴を消しました。`);
   });
 
   // ---------- 起動 ----------
